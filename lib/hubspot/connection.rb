@@ -5,7 +5,7 @@ module Hubspot
     class << self
       def get_json(path, opts)
         url = generate_url(path, opts)
-        response = get(url, format: :json)
+        response = get(url, headers: authorization_header, format: :json)
         log_request_and_response url, response
         raise(Hubspot::RequestError.new(response)) unless response.success?
         response.parsed_response
@@ -15,7 +15,7 @@ module Hubspot
         no_parse = opts[:params].delete(:no_parse) { false }
 
         url = generate_url(path, opts[:params])
-        response = post(url, body: opts[:body].to_json, headers: { 'Content-Type' => 'application/json' }, format: :json)
+        response = post(url, body: opts[:body].to_json, headers: { 'Content-Type' => 'application/json' }.merge(authorization_header), format: :json)
         log_request_and_response url, response, opts[:body]
         raise(Hubspot::RequestError.new(response)) unless response.success?
 
@@ -24,7 +24,7 @@ module Hubspot
 
       def put_json(path, opts)
         url = generate_url(path, opts[:params])
-        response = put(url, body: opts[:body].to_json, headers: { 'Content-Type' => 'application/json' }, format: :json)
+        response = put(url, body: opts[:body].to_json, headers: { 'Content-Type' => 'application/json' }.merge(authorization_header), format: :json)
         log_request_and_response url, response, opts[:body]
         raise(Hubspot::RequestError.new(response)) unless response.success?
         response.parsed_response
@@ -32,7 +32,7 @@ module Hubspot
 
       def delete_json(path, opts)
         url = generate_url(path, opts)
-        response = delete(url, format: :json)
+        response = delete(url, headers: authorization_header, format: :json)
         log_request_and_response url, response, opts[:body]
         raise(Hubspot::RequestError.new(response)) unless response.success?
         response
@@ -45,7 +45,12 @@ module Hubspot
       end
 
       def generate_url(path, params={}, options={})
-        Hubspot::Config.ensure! :hapikey
+        if Hubspot::Config.access_token.present?
+          options[:hapikey] = false
+        else
+          Hubspot::Config.ensure! :hapikey
+        end
+        
         path = path.clone
         params = params.clone
         base_url = options[:base_url] || Hubspot::Config.base_url
@@ -88,6 +93,18 @@ module Hubspot
         else
           "#{key}=#{converted_value(value)}"
         end
+      end
+
+      def authorization_header
+        return {} unless Hubspot::Config.access_token.present?
+
+        if Hubspot::Config.access_token.respond_to?(:call)
+          access_token = Hubspot::Config.access_token.call
+        else
+          access_token = Hubspot::Config.access_token
+        end
+
+        { 'Authorization' => "Bearer #{access_token}" }
       end
     end
   end
